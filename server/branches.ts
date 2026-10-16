@@ -1,6 +1,8 @@
 import "server-only";
+import type { AccessAction } from "@/lib/access";
+import { requireAnyFeature, requireFeature } from "./access";
 import { getPool, sql } from "./db";
-import { getSession, type SessionDTO } from "./session";
+import type { SessionDTO } from "./session";
 
 type CompanySession = SessionDTO & { company: NonNullable<SessionDTO["company"]> };
 
@@ -38,15 +40,8 @@ function isUniqueError(error: unknown) {
   return number === 2627 || number === 2601;
 }
 
-async function requireCompany(): Promise<CompanySession | { error: string }> {
-  const session = await getSession();
-  if (!session) {
-    return { error: "No signed-in user." };
-  }
-  if (!session.company) {
-    return { error: "No current company." };
-  }
-  return session as CompanySession;
+function requireCompany(action: AccessAction) {
+  return requireFeature("branches", action);
 }
 
 function mapBranch(row: {
@@ -80,7 +75,7 @@ const BRANCH_SEARCH = `
 `;
 
 export async function listBranches(query: BranchListQuery) {
-  const session = await requireCompany();
+  const session = await requireCompany("view");
   if ("error" in session) {
     return { rows: [], totalCount: 0 };
   }
@@ -131,7 +126,7 @@ export async function listBranches(query: BranchListQuery) {
 export async function listBranchesForExport(
   query: Omit<BranchListQuery, "page" | "pageSize">,
 ) {
-  const session = await requireCompany();
+  const session = await requireCompany("view");
   if ("error" in session) {
     return [];
   }
@@ -162,7 +157,7 @@ export async function listBranchesForExport(
 }
 
 export async function createBranch(input: BranchInput) {
-  const session = await requireCompany();
+  const session = await requireCompany("create");
   if ("error" in session) {
     return session;
   }
@@ -196,7 +191,7 @@ export async function createBranch(input: BranchInput) {
 }
 
 export async function updateBranch(id: number, input: BranchInput) {
-  const session = await requireCompany();
+  const session = await requireCompany("edit");
   if ("error" in session) {
     return session;
   }
@@ -239,7 +234,7 @@ export async function updateBranch(id: number, input: BranchInput) {
 }
 
 export async function setBranchActive(id: number, isActive: boolean) {
-  const session = await requireCompany();
+  const session = await requireCompany("edit");
   if ("error" in session) {
     return session;
   }
@@ -272,7 +267,7 @@ export async function importBranches(
   records: { name: string; location: string }[],
   dryRun: boolean,
 ) {
-  const session = await requireCompany();
+  const session = await requireCompany("create");
   if ("error" in session) {
     return { problems: [session.error] };
   }

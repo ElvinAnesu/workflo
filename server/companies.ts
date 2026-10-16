@@ -1,4 +1,5 @@
 import "server-only";
+import { can, type AccessAction } from "@/lib/access";
 import { getPool, sql } from "./db";
 import { writeCompanyCookie } from "./company-cookie";
 import { getSession } from "./session";
@@ -40,16 +41,19 @@ function isUniqueNameError(error: unknown) {
   return number === 2627 || number === 2601;
 }
 
-async function requireUser() {
+async function requireUser(action?: AccessAction) {
   const session = await getSession();
   if (!session) {
+    return null;
+  }
+  if (action && !can(session.access, "company", action)) {
     return null;
   }
   return session;
 }
 
 export async function listCompanies(query: CompanyListQuery) {
-  const session = await requireUser();
+  const session = await requireUser("view");
   if (!session) {
     return { rows: [], totalCount: 0 };
   }
@@ -118,7 +122,7 @@ export async function listCompanies(query: CompanyListQuery) {
 }
 
 export async function listCompaniesForExport(query: Omit<CompanyListQuery, "page" | "pageSize">) {
-  const session = await requireUser();
+  const session = await requireUser("view");
   if (!session) {
     return [];
   }
@@ -163,7 +167,7 @@ export async function listCompaniesForExport(query: Omit<CompanyListQuery, "page
 }
 
 export async function getCompany(id: number) {
-  const session = await requireUser();
+  const session = await requireUser("view");
   if (!session?.companies.some((company) => company.id === id)) {
     return null;
   }
@@ -202,7 +206,7 @@ export async function getCompany(id: number) {
 }
 
 export async function createCompany(input: CompanyInput) {
-  const session = await requireUser();
+  const session = await requireUser("create");
   if (!session) {
     return { error: "No signed-in user." };
   }
@@ -253,7 +257,7 @@ export async function createCompany(input: CompanyInput) {
 }
 
 export async function updateCompany(id: number, input: CompanyInput) {
-  const session = await requireUser();
+  const session = await requireUser("edit");
   if (!session) {
     return { error: "No signed-in user." };
   }
@@ -298,7 +302,7 @@ export async function updateCompany(id: number, input: CompanyInput) {
 }
 
 export async function setCompanyActive(id: number, isActive: boolean) {
-  const session = await requireUser();
+  const session = await requireUser("edit");
   if (!session) {
     return { error: "No signed-in user." };
   }

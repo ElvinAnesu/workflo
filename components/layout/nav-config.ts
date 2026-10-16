@@ -1,3 +1,4 @@
+import { can, featureForPath, type AccessSnapshot } from "@/lib/access";
 import {
   Boxes,
   Briefcase,
@@ -151,6 +152,27 @@ export type FlatNavLink = NavLink & { href: string; trail: string };
 
 // Every page that exists, with its location in the menu, for search and the
 // collapsed sidebar.
+function canSee(access: AccessSnapshot | null | undefined, href?: string) {
+  if (!href) {
+    return false;
+  }
+  const feature = featureForPath(href);
+  return Boolean(feature && can(access, feature, "view"));
+}
+
+export function visibleNavSections(access: AccessSnapshot | null | undefined): NavSection[] {
+  return NAV_SECTIONS.map((section) => ({
+    ...section,
+    entries: section.entries.flatMap((entry): NavEntry[] => {
+      if (entry.kind === "item") {
+        return canSee(access, entry.href) ? [entry] : [];
+      }
+      const items = entry.items.filter((link) => canSee(access, link.href));
+      return items.length > 0 ? [{ ...entry, items }] : [];
+    }),
+  })).filter((section) => section.entries.length > 0);
+}
+
 export function flatNavLinks(): FlatNavLink[] {
   return NAV_SECTIONS.flatMap((section) =>
     section.entries.flatMap((entry) => {

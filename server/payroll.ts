@@ -31,6 +31,8 @@ import type {
   TaxBand,
 } from "@/components/payroll/payroll.types";
 import type { PayrollEmployee } from "@/components/payroll/payroll-run-builder";
+import { canAny, type AccessAction } from "@/lib/access";
+import { requireFeature } from "./access";
 import { getPool, sql } from "./db";
 import { getSession, type SessionDTO } from "./session";
 
@@ -68,15 +70,8 @@ export type EngineWorld = {
   employeeCodes: Map<string, string>;
 };
 
-async function requireCompany(): Promise<CompanySession | { error: string }> {
-  const session = await getSession();
-  if (!session) {
-    return { error: "No signed-in user." };
-  }
-  if (!session.company) {
-    return { error: "No current company." };
-  }
-  return session as CompanySession;
+function requireCompany(feature: string, action: AccessAction) {
+  return requireFeature(feature, action);
 }
 
 function errorNumber(error: unknown) {
@@ -651,9 +646,16 @@ function monthlyBlock(world: EngineWorld, period: string, kind: "mid" | "overtim
 }
 
 export async function payrollReadinessMessage() {
-  const session = await requireCompany();
-  if ("error" in session) {
-    return session.error;
+  const session = await getSession();
+  if (
+    !session?.company ||
+    !canAny(session.access, [
+      { feature: "monthlyPayrollProcessing", action: "view" },
+      { feature: "midMonthPayrollProcessing", action: "view" },
+      { feature: "overtimeMonthPayrollProcessing", action: "view" },
+    ])
+  ) {
+    return "";
   }
   const pool = await getPool();
   const world = await loadEngineWorld(session.company.id, pool);
@@ -661,7 +663,7 @@ export async function payrollReadinessMessage() {
 }
 
 async function companySession() {
-  const session = await requireCompany();
+  const session = await requireCompany("banks", "view");
   if ("error" in session) {
     return session;
   }
@@ -716,7 +718,7 @@ async function queryRows<T extends { total: number }>(pool: sql.ConnectionPool, 
 }
 
 export async function saveBank(values: { id?: number; name: string; code: string }) {
-  const session = await requireCompany();
+  const session = await requireCompany("banks", values.id ? "edit" : "create");
   if ("error" in session) {
     return session;
   }
@@ -760,7 +762,7 @@ export async function saveBank(values: { id?: number; name: string; code: string
 }
 
 export async function deleteBank(id: number) {
-  const session = await requireCompany();
+  const session = await requireCompany("banks", "delete");
   if ("error" in session) {
     return session;
   }
@@ -792,7 +794,7 @@ export async function deleteBank(id: number) {
 }
 
 export async function listPayComponents(list: PayrollListQuery) {
-  const session = await requireCompany();
+  const session = await requireCompany("payComponents", "view");
   if ("error" in session) {
     return { rows: [] as PayComponentRow[], totalCount: 0 };
   }
@@ -871,7 +873,7 @@ export async function savePayComponent(values: {
   taxable: boolean;
   active: boolean;
 }) {
-  const session = await requireCompany();
+  const session = await requireCompany("payComponents", values.id ? "edit" : "create");
   if ("error" in session) {
     return session;
   }
@@ -928,7 +930,7 @@ export async function savePayComponent(values: {
 }
 
 export async function deletePayComponent(id: number) {
-  const session = await requireCompany();
+  const session = await requireCompany("payComponents", "delete");
   if ("error" in session) {
     return session;
   }
@@ -952,7 +954,7 @@ export async function deletePayComponent(id: number) {
 }
 
 export async function listContributions(list: PayrollListQuery) {
-  const session = await requireCompany();
+  const session = await requireCompany("statutoryRates", "view");
   if ("error" in session) {
     return { rows: [] as StatutoryContribution[], totalCount: 0 };
   }
@@ -1019,7 +1021,7 @@ export async function saveContribution(values: {
   scope: ContributionScope;
   active: boolean;
 }) {
-  const session = await requireCompany();
+  const session = await requireCompany("statutoryRates", values.id ? "edit" : "create");
   if ("error" in session) {
     return session;
   }
@@ -1078,7 +1080,7 @@ export async function saveContribution(values: {
 }
 
 export async function deleteContribution(id: number) {
-  const session = await requireCompany();
+  const session = await requireCompany("statutoryRates", "delete");
   if ("error" in session) {
     return session;
   }
@@ -1102,7 +1104,7 @@ export async function deleteContribution(id: number) {
 }
 
 export async function listTaxBands() {
-  const session = await requireCompany();
+  const session = await requireCompany("taxBands", "view");
   if ("error" in session) {
     return [] as TaxBand[];
   }
@@ -1125,7 +1127,7 @@ export async function listTaxBands() {
 }
 
 export async function saveTaxBands(bands: Omit<TaxBand, "id">[]) {
-  const session = await requireCompany();
+  const session = await requireCompany("taxBands", "edit");
   if ("error" in session) {
     return session;
   }

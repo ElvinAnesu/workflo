@@ -1,4 +1,5 @@
 import "server-only";
+import { can, type AccessAction } from "@/lib/access";
 import { getPool, sql } from "./db";
 import { hashPassword } from "./password";
 import { getAssignableRole } from "./roles";
@@ -66,9 +67,12 @@ function uniqueUserMessage(error: unknown) {
   return "A user with this username or email already exists.";
 }
 
-async function requireUser() {
+async function requireUser(action: AccessAction) {
   const session = await getSession();
-  if (!session) {
+  if (!session || !session.company) {
+    return null;
+  }
+  if (!can(session.access, "users", action)) {
     return null;
   }
   return session;
@@ -165,7 +169,7 @@ const USER_SELECT = `
 `;
 
 export async function listUsers(query: UserListQuery) {
-  const session = await requireUser();
+  const session = await requireUser("view");
   if (!session?.company) {
     return { rows: [], totalCount: 0 };
   }
@@ -220,7 +224,7 @@ export async function listUsers(query: UserListQuery) {
 export async function listUsersForExport(
   query: Omit<UserListQuery, "page" | "pageSize">,
 ) {
-  const session = await requireUser();
+  const session = await requireUser("view");
   if (!session?.company) {
     return [];
   }
@@ -255,7 +259,7 @@ export async function listUsersForExport(
 }
 
 export async function createUser(input: UserInput) {
-  const session = await requireUser();
+  const session = await requireUser("create");
   if (!session) {
     return { error: "No signed-in user." };
   }
@@ -319,7 +323,7 @@ export async function createUser(input: UserInput) {
 }
 
 export async function updateUser(id: number, input: UserInput) {
-  const session = await requireUser();
+  const session = await requireUser("edit");
   if (!session) {
     return { error: "No signed-in user." };
   }
@@ -400,7 +404,7 @@ export async function updateUser(id: number, input: UserInput) {
 }
 
 export async function setUserActive(id: number, isActive: boolean) {
-  const session = await requireUser();
+  const session = await requireUser("edit");
   if (!session) {
     return { error: "No signed-in user." };
   }

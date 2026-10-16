@@ -1,7 +1,9 @@
 import "server-only";
+import type { AccessAction } from "@/lib/access";
+import { requireAnyFeature, requireFeature } from "./access";
 import { EMPLOYEE_STATUSES, type EmployeeImportRecord, type EmployeeInput, type EmployeeListRow, type EmployeeLookupOption } from "@/components/employees/employee.types";
 import { getPool, sql } from "./db";
-import { getSession, type SessionDTO } from "./session";
+import type { SessionDTO } from "./session";
 
 type CompanySession = SessionDTO & { company: NonNullable<SessionDTO["company"]> };
 
@@ -123,15 +125,8 @@ function isUniqueError(error: unknown) {
   return number === 2627 || number === 2601;
 }
 
-async function requireCompany(): Promise<CompanySession | { error: string }> {
-  const session = await getSession();
-  if (!session) {
-    return { error: "No signed-in user." };
-  }
-  if (!session.company) {
-    return { error: "No current company." };
-  }
-  return session as CompanySession;
+function requireCompany(action: AccessAction) {
+  return requireFeature("employees", action);
 }
 
 function text(value: string | null | undefined) {
@@ -442,7 +437,11 @@ export async function listEmployeeFormOptions() {
     employmentTypes: [] as EmployeeLookupOption[],
     employeeCategories: [] as EmployeeLookupOption[],
   };
-  const session = await requireCompany();
+  const session = await requireAnyFeature([
+    { feature: "employees", action: "view" },
+    { feature: "hiringRequests", action: "view" },
+    { feature: "candidates", action: "view" },
+  ]);
   if ("error" in session) {
     return empty;
   }
@@ -485,7 +484,11 @@ export async function listEmployeeFormOptions() {
 }
 
 export async function peekNextEmployeeCode() {
-  const session = await requireCompany();
+  const session = await requireAnyFeature([
+    { feature: "employees", action: "view" },
+    { feature: "hiringRequests", action: "view" },
+    { feature: "candidates", action: "view" },
+  ]);
   if ("error" in session) {
     return "EMP001";
   }
@@ -502,7 +505,7 @@ export async function peekNextEmployeeCode() {
 }
 
 export async function listEmployees(query: EmployeeListQuery) {
-  const session = await requireCompany();
+  const session = await requireCompany("view");
   if ("error" in session) {
     return { rows: [], totalCount: 0 };
   }
@@ -546,7 +549,7 @@ export async function listEmployees(query: EmployeeListQuery) {
 export async function listEmployeesForExport(
   query: Omit<EmployeeListQuery, "page" | "pageSize">,
 ) {
-  const session = await requireCompany();
+  const session = await requireCompany("view");
   if ("error" in session) {
     return [];
   }
@@ -570,7 +573,7 @@ export async function listEmployeesForExport(
 }
 
 export async function createEmployee(input: EmployeeInput) {
-  const session = await requireCompany();
+  const session = await requireCompany("create");
   if ("error" in session) {
     return session;
   }
@@ -608,7 +611,7 @@ export async function createEmployee(input: EmployeeInput) {
 }
 
 export async function updateEmployee(id: number, input: EmployeeInput) {
-  const session = await requireCompany();
+  const session = await requireCompany("edit");
   if ("error" in session) {
     return session;
   }
@@ -677,7 +680,7 @@ export async function updateEmployee(id: number, input: EmployeeInput) {
 }
 
 export async function deleteEmployee(id: number) {
-  const session = await requireCompany();
+  const session = await requireCompany("delete");
   if ("error" in session) {
     return session;
   }
@@ -702,7 +705,7 @@ function nameMap(rows: { id: number; name: string }[]) {
 }
 
 export async function importEmployees(records: EmployeeImportRecord[], dryRun: boolean) {
-  const session = await requireCompany();
+  const session = await requireCompany("create");
   if ("error" in session) {
     return { problems: [session.error] };
   }

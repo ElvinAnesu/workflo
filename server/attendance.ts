@@ -1,4 +1,6 @@
 import "server-only";
+import type { AccessAction } from "@/lib/access";
+import { requireAnyFeature, requireFeature } from "./access";
 import {
   ATTENDANCE_STATUSES,
   type AttendanceEmployeeOption,
@@ -10,7 +12,7 @@ import {
   type MarkAttendanceSaveRow,
 } from "@/components/attendance/attendance.types";
 import { getPool, sql } from "./db";
-import { getSession, type SessionDTO } from "./session";
+import type { SessionDTO } from "./session";
 
 type CompanySession = SessionDTO & { company: NonNullable<SessionDTO["company"]> };
 
@@ -134,15 +136,8 @@ type ShiftOptionSqlRow = {
   end_time: Date | string;
 };
 
-async function requireCompany(): Promise<CompanySession | { error: string }> {
-  const session = await getSession();
-  if (!session) {
-    return { error: "No signed-in user." };
-  }
-  if (!session.company) {
-    return { error: "No current company." };
-  }
-  return session as CompanySession;
+function requireCompany(feature: string, action: AccessAction) {
+  return requireFeature(feature, action);
 }
 
 function weekdayOf(isoDate: string) {
@@ -298,7 +293,10 @@ export async function listAttendanceOptions() {
     shifts: [] as AttendanceShiftOption[],
     employees: [] as AttendanceEmployeeOption[],
   };
-  const session = await requireCompany();
+  const session = await requireAnyFeature([
+    { feature: "markAttendance", action: "view" },
+    { feature: "viewAttendance", action: "view" },
+  ]);
   if ("error" in session) {
     return empty;
   }
@@ -353,7 +351,7 @@ export async function listMarkAttendance(query: {
   pageSize: number;
   sortDirection: "asc" | "desc";
 }) {
-  const session = await requireCompany();
+  const session = await requireCompany("markAttendance", "view");
   if ("error" in session) {
     return { rows: [] as MarkAttendanceRow[], totalCount: 0, scheduledCount: 0 };
   }
@@ -378,7 +376,7 @@ export async function listMarkAttendance(query: {
 }
 
 export async function listMarkRoster(query: { workDate: string; shiftId: number }) {
-  const session = await requireCompany();
+  const session = await requireCompany("markAttendance", "view");
   if ("error" in session) {
     return session;
   }
@@ -399,7 +397,7 @@ export async function listMarkAttendanceForExport(query: {
   search: string;
   sortDirection: "asc" | "desc";
 }) {
-  const session = await requireCompany();
+  const session = await requireCompany("markAttendance", "view");
   if ("error" in session) {
     return [] as MarkAttendanceRow[];
   }
@@ -418,7 +416,10 @@ export async function saveMarkAttendance(input: {
   shiftId: number;
   rows: MarkAttendanceSaveRow[];
 }) {
-  const session = await requireCompany();
+  const session = await requireAnyFeature([
+    { feature: "markAttendance", action: "create" },
+    { feature: "markAttendance", action: "edit" },
+  ]);
   if ("error" in session) {
     return session;
   }
@@ -601,7 +602,7 @@ export async function listAttendance(query: {
   sortKey: string;
   sortDirection: "asc" | "desc";
 }) {
-  const session = await requireCompany();
+  const session = await requireCompany("viewAttendance", "view");
   if ("error" in session) {
     return { rows: [] as AttendanceListRow[], totalCount: 0 };
   }
@@ -639,7 +640,7 @@ export async function listAttendanceForExport(query: {
   sortKey: string;
   sortDirection: "asc" | "desc";
 }) {
-  const session = await requireCompany();
+  const session = await requireCompany("viewAttendance", "view");
   if ("error" in session) {
     return [] as AttendanceListRow[];
   }
@@ -723,7 +724,7 @@ async function referencesBelong(
 }
 
 export async function createAttendance(input: AttendanceInput) {
-  const session = await requireCompany();
+  const session = await requireCompany("viewAttendance", "create");
   if ("error" in session) {
     return session;
   }
@@ -785,7 +786,7 @@ export async function createAttendance(input: AttendanceInput) {
 }
 
 export async function updateAttendance(id: number, input: AttendanceInput) {
-  const session = await requireCompany();
+  const session = await requireCompany("viewAttendance", "edit");
   if ("error" in session) {
     return session;
   }
@@ -857,7 +858,7 @@ export async function updateAttendance(id: number, input: AttendanceInput) {
 }
 
 export async function deleteAttendance(id: number) {
-  const session = await requireCompany();
+  const session = await requireCompany("viewAttendance", "delete");
   if ("error" in session) {
     return session;
   }

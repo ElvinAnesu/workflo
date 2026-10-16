@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { isActivePath, NAV_SECTIONS } from "./nav-config";
+import { useSession } from "@/components/session/session-context";
+import { isActivePath, visibleNavSections } from "./nav-config";
 import { SidebarNavGroup } from "./sidebar-nav-group";
 import { SidebarNavItem } from "./sidebar-nav-item";
 import { SidebarNavSection } from "./sidebar-nav-section";
@@ -20,6 +21,7 @@ type SidebarNavProps = {
 
 export function SidebarNav({ collapsed, initialOpenState }: SidebarNavProps) {
   const pathname = usePathname();
+  const sections = visibleNavSections(useSession()?.access);
   const [openState, setOpenState] =
     useState<SidebarOpenState>(initialOpenState);
 
@@ -38,7 +40,7 @@ export function SidebarNav({ collapsed, initialOpenState }: SidebarNavProps) {
   if (collapsed) {
     return (
       <nav className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto px-2 pt-1 pb-2">
-        {NAV_SECTIONS.map((section, sectionIndex) => (
+        {sections.map((section, sectionIndex) => (
           <div key={section.key} className="flex flex-col items-center gap-1">
             {sectionIndex > 0 ? <span className="my-1 h-px w-6 bg-zinc-200" /> : null}
             {section.entries
@@ -70,7 +72,7 @@ export function SidebarNav({ collapsed, initialOpenState }: SidebarNavProps) {
   return (
     <nav className="min-h-0 flex-1 overflow-auto px-3 pb-3">
       <div className="flex flex-col gap-3">
-        {NAV_SECTIONS.map((section) => (
+        {sections.map((section) => (
           <SidebarNavSection
             key={section.key}
             title={section.title}

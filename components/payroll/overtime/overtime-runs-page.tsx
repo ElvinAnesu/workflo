@@ -15,7 +15,7 @@ import type { PayrollRunStatus } from "@/components/payroll/payroll.types";
 import { currentPeriod } from "@/components/payroll/run-parts";
 import { RunStatusBadge } from "@/components/payroll/run-status-badge";
 import { DataTable } from "@/components/table/data-table";
-import { RowActions } from "@/components/table/table-actions";
+import { RowActions, usePageCan } from "@/components/table/table-actions";
 import type { DataTableColumn, DataTableSort } from "@/components/table/data-table.types";
 
 const invalidClass = "h-7 rounded-md border border-red-500 bg-red-50 px-2 text-xs text-zinc-700 outline-none";
@@ -49,6 +49,7 @@ export function OvertimeRunsPage({
   problems: string[];
 }) {
   const router = useRouter();
+  const canRun = usePageCan("run");
   const pathname = usePathname();
   const [period, setPeriod] = useState(() => addMonths(currentPeriod(), -1));
   const [payPeriod, setPayPeriod] = useState(currentPeriod);
@@ -163,6 +164,7 @@ export function OvertimeRunsPage({
             className={submitted && !payPeriod ? invalidClass : formControlClass}
           />
         </label>
+        {canRun ? (
         <button
           type="button"
           onClick={() => {
@@ -174,6 +176,7 @@ export function OvertimeRunsPage({
           <Plus className="size-4" />
           New overtime sheet
         </button>
+        ) : null}
         {error ? <p className="self-center text-xs text-red-600">{error}</p> : null}
       </div>
 

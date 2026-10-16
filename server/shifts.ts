@@ -1,11 +1,13 @@
 import "server-only";
+import type { AccessAction } from "@/lib/access";
+import { requireFeature } from "./access";
 import type {
   ShiftInput,
   ShiftListRow,
   ShiftLookupOption,
 } from "@/components/shifts/shift.types";
 import { getPool, sql } from "./db";
-import { getSession, type SessionDTO } from "./session";
+import type { SessionDTO } from "./session";
 
 type CompanySession = SessionDTO & { company: NonNullable<SessionDTO["company"]> };
 
@@ -67,15 +69,8 @@ function isUniqueError(error: unknown) {
   return number === 2627 || number === 2601;
 }
 
-async function requireCompany(): Promise<CompanySession | { error: string }> {
-  const session = await getSession();
-  if (!session) {
-    return { error: "No signed-in user." };
-  }
-  if (!session.company) {
-    return { error: "No current company." };
-  }
-  return session as CompanySession;
+function requireCompany(action: AccessAction) {
+  return requireFeature("shifts", action);
 }
 
 function formatTime(value: Date | string) {
@@ -196,7 +191,7 @@ export async function listShiftFormOptions() {
     branches: [] as ShiftLookupOption[],
     departments: [] as ShiftLookupOption[],
   };
-  const session = await requireCompany();
+  const session = await requireCompany("view");
   if ("error" in session) {
     return empty;
   }
@@ -225,7 +220,7 @@ export async function listShiftFormOptions() {
 }
 
 export async function listShifts(query: ShiftListQuery) {
-  const session = await requireCompany();
+  const session = await requireCompany("view");
   if ("error" in session) {
     return { rows: [], totalCount: 0 };
   }
@@ -277,7 +272,7 @@ export async function listShifts(query: ShiftListQuery) {
 export async function listShiftsForExport(
   query: Omit<ShiftListQuery, "page" | "pageSize">,
 ) {
-  const session = await requireCompany();
+  const session = await requireCompany("view");
   if ("error" in session) {
     return [];
   }
@@ -393,7 +388,7 @@ async function saveShift(
 }
 
 export async function createShift(input: ShiftInput) {
-  const session = await requireCompany();
+  const session = await requireCompany("create");
   if ("error" in session) {
     return session;
   }
@@ -405,7 +400,7 @@ export async function createShift(input: ShiftInput) {
 }
 
 export async function updateShift(id: number, input: ShiftInput) {
-  const session = await requireCompany();
+  const session = await requireCompany("edit");
   if ("error" in session) {
     return session;
   }
@@ -417,7 +412,7 @@ export async function updateShift(id: number, input: ShiftInput) {
 }
 
 export async function deleteShift(id: number) {
-  const session = await requireCompany();
+  const session = await requireCompany("delete");
   if ("error" in session) {
     return session;
   }

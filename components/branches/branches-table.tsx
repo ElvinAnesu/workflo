@@ -17,7 +17,7 @@ import type {
   DataTableSort,
 } from "@/components/table/data-table.types";
 import { ImportDialog } from "@/components/table/import-dialog";
-import { exportTable, RowActions, TableActions } from "@/components/table/table-actions";
+import { exportTable, RowActions, TableActions, usePageCan } from "@/components/table/table-actions";
 
 type BranchesTableProps = {
   rows: BranchListRow[];
@@ -61,6 +61,7 @@ export function BranchesTable({
   sort,
 }: BranchesTableProps) {
   const overlay = useOverlayDialog();
+  const canEdit = usePageCan("edit");
   const { confirm } = useConfirmDialog();
   const router = useRouter();
   const pathname = usePathname();
@@ -114,7 +115,7 @@ export function BranchesTable({
         label: "Actions",
         sortable: false,
         exportValue: false,
-        render: (row) => (
+        render: (row) => canEdit ? (
           <RowActions>
             <button
               type="button"
@@ -145,10 +146,10 @@ export function BranchesTable({
               {row.isActive ? "Deactivate" : "Activate"}
             </button>
           </RowActions>
-        ),
+        ) : null,
       },
     ],
-    [overlay, toggleActive],
+    [canEdit, overlay, toggleActive],
   );
 
   async function handleExport() {

@@ -1,6 +1,8 @@
 import "server-only";
+import type { AccessAction } from "@/lib/access";
+import { requireFeature } from "./access";
 import { getPool, sql } from "./db";
-import { getSession, type SessionDTO } from "./session";
+import type { SessionDTO } from "./session";
 
 type CompanySession = SessionDTO & { company: NonNullable<SessionDTO["company"]> };
 
@@ -49,15 +51,8 @@ function uniqueDepartmentMessage(error: unknown) {
   return "A department with this name already exists.";
 }
 
-async function requireCompany(): Promise<CompanySession | { error: string }> {
-  const session = await getSession();
-  if (!session) {
-    return { error: "No signed-in user." };
-  }
-  if (!session.company) {
-    return { error: "No current company." };
-  }
-  return session as CompanySession;
+function requireCompany(action: AccessAction) {
+  return requireFeature("departments", action);
 }
 
 function mapDepartment(row: {
@@ -91,7 +86,7 @@ const DEPARTMENT_SEARCH = `
 `;
 
 export async function listDepartments(query: DepartmentListQuery) {
-  const session = await requireCompany();
+  const session = await requireCompany("view");
   if ("error" in session) {
     return { rows: [], totalCount: 0 };
   }
@@ -142,7 +137,7 @@ export async function listDepartments(query: DepartmentListQuery) {
 export async function listDepartmentsForExport(
   query: Omit<DepartmentListQuery, "page" | "pageSize">,
 ) {
-  const session = await requireCompany();
+  const session = await requireCompany("view");
   if ("error" in session) {
     return [];
   }
@@ -173,7 +168,7 @@ export async function listDepartmentsForExport(
 }
 
 export async function createDepartment(input: DepartmentInput) {
-  const session = await requireCompany();
+  const session = await requireCompany("create");
   if ("error" in session) {
     return session;
   }
@@ -207,7 +202,7 @@ export async function createDepartment(input: DepartmentInput) {
 }
 
 export async function updateDepartment(id: number, input: DepartmentInput) {
-  const session = await requireCompany();
+  const session = await requireCompany("edit");
   if ("error" in session) {
     return session;
   }
@@ -250,7 +245,7 @@ export async function updateDepartment(id: number, input: DepartmentInput) {
 }
 
 export async function setDepartmentActive(id: number, isActive: boolean) {
-  const session = await requireCompany();
+  const session = await requireCompany("edit");
   if ("error" in session) {
     return session;
   }
@@ -283,7 +278,7 @@ export async function importDepartments(
   records: { name: string; code: string }[],
   dryRun: boolean,
 ) {
-  const session = await requireCompany();
+  const session = await requireCompany("create");
   if ("error" in session) {
     return { problems: [session.error] };
   }

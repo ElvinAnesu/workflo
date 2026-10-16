@@ -22,6 +22,7 @@ import {
   recalculateMonthlyAction,
   reopenMonthlyAction,
 } from "@/app/(app)/payroll/actions";
+import { usePageCan } from "@/components/table/table-actions";
 import {
   linkButtonClass,
   primaryButtonClass,
@@ -344,6 +345,10 @@ export function PayrollRunDetail({
   const [approver, setApprover] = useState("");
   const [approverSubmitted, setApproverSubmitted] = useState(false);
   const [message, setMessage] = useState<{ tone: "error" | "ok"; text: string } | null>(null);
+  const canRun = usePageCan("run");
+  const canApprove = usePageCan("approve");
+  const canEdit = usePageCan("edit");
+  const canDelete = usePageCan("delete");
 
   if (!run) {
     return (
@@ -468,6 +473,7 @@ export function PayrollRunDetail({
       <div className="flex flex-wrap items-center gap-2 print:hidden">
         {isDraft ? (
           <>
+            {canRun ? (
             <button
               type="button"
               onClick={() => {
@@ -478,7 +484,8 @@ export function PayrollRunDetail({
               <RefreshCw className="size-4" />
               Recalculate
             </button>
-            {approving ? (
+            ) : null}
+            {canApprove && approving ? (
               <span className="flex items-center gap-2">
                 <input
                   autoFocus
@@ -504,7 +511,7 @@ export function PayrollRunDetail({
                   Cancel
                 </button>
               </span>
-            ) : (
+            ) : canApprove ? (
               <button
                 type="button"
                 disabled={blocking.length > 0 || current.lines.length === 0}
@@ -519,7 +526,8 @@ export function PayrollRunDetail({
                 <Check className="size-4" />
                 Approve
               </button>
-            )}
+            ) : null}
+            {canDelete ? (
             <button
               type="button"
               onClick={() => {
@@ -529,10 +537,12 @@ export function PayrollRunDetail({
             >
               Delete draft
             </button>
+            ) : null}
           </>
         ) : null}
         {current.status === "Approved" ? (
           <>
+            {canRun ? (
             <button
               type="button"
               onClick={() => {
@@ -543,6 +553,8 @@ export function PayrollRunDetail({
               <Lock className="size-4" />
               Lock payroll
             </button>
+            ) : null}
+            {canEdit ? (
             <button
               type="button"
               onClick={() => {
@@ -558,6 +570,7 @@ export function PayrollRunDetail({
             >
               Back to draft
             </button>
+            ) : null}
           </>
         ) : null}
         <span className="ml-auto flex flex-wrap gap-2">

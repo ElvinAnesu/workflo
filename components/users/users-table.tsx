@@ -13,7 +13,7 @@ import type {
   DataTableColumn,
   DataTableSort,
 } from "@/components/table/data-table.types";
-import { exportTable, RowActions, TableActions } from "@/components/table/table-actions";
+import { exportTable, RowActions, TableActions, usePageCan } from "@/components/table/table-actions";
 import { UserFormDialog } from "@/components/users/user-form-dialog";
 import type { RoleSelectOption, UserListRow } from "@/components/users/user.types";
 
@@ -63,6 +63,7 @@ export function UsersTable({
   roles,
 }: UsersTableProps) {
   const overlay = useOverlayDialog();
+  const canEdit = usePageCan("edit");
   const { confirm } = useConfirmDialog();
   const router = useRouter();
   const pathname = usePathname();
@@ -129,7 +130,7 @@ export function UsersTable({
         label: "Actions",
         sortable: false,
         exportValue: false,
-        render: (row) => (
+        render: (row) => canEdit ? (
           <RowActions>
             <button
               type="button"
@@ -162,10 +163,10 @@ export function UsersTable({
               </button>
             )}
           </RowActions>
-        ),
+        ) : null,
       },
     ],
-    [currentUserId, overlay, roles, toggleActive],
+    [canEdit, currentUserId, overlay, roles, toggleActive],
   );
 
   async function handleExport() {

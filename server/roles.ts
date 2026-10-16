@@ -5,6 +5,7 @@ import {
   PERMISSION_FEATURES,
 } from "@/components/roles/permission-features";
 import type { RolePermissionActions } from "@/components/roles/role.types";
+import { can, canAny, type AccessAction } from "@/lib/access";
 import { getPool, sql } from "./db";
 import { getSession } from "./session";
 
@@ -72,9 +73,12 @@ function isUniqueError(error: unknown) {
   return number === 2627 || number === 2601;
 }
 
-async function requireUser() {
+async function requireUser(action: AccessAction) {
   const session = await getSession();
   if (!session) {
+    return null;
+  }
+  if (!can(session.access, "roles", action)) {
     return null;
   }
   return session;
@@ -211,7 +215,16 @@ async function replacePermissions(
 }
 
 export async function listRolesForSelect(selectedId?: number | null) {
-  const session = await requireUser();
+  const session = await getSession();
+  if (
+    !session ||
+    !canAny(session.access, [
+      { feature: "roles", action: "view" },
+      { feature: "users", action: "view" },
+    ])
+  ) {
+    return [];
+  }
   if (!session) {
     return [];
   }
@@ -257,7 +270,7 @@ export async function getAssignableRole(id: number) {
 }
 
 export async function listRoles(query: RoleListQuery) {
-  const session = await requireUser();
+  const session = await requireUser("view");
   if (!session) {
     return { rows: [], totalCount: 0 };
   }
@@ -312,7 +325,7 @@ export async function listRoles(query: RoleListQuery) {
 export async function listRolesForExport(
   query: Omit<RoleListQuery, "page" | "pageSize">,
 ) {
-  const session = await requireUser();
+  const session = await requireUser("view");
   if (!session) {
     return [];
   }
@@ -346,7 +359,7 @@ export async function listRolesForExport(
 }
 
 export async function createRole(input: RoleInput) {
-  const session = await requireUser();
+  const session = await requireUser("create");
   if (!session) {
     return { error: "No signed-in user." };
   }
@@ -393,7 +406,7 @@ export async function createRole(input: RoleInput) {
 }
 
 export async function updateRole(id: number, input: RoleInput) {
-  const session = await requireUser();
+  const session = await requireUser("edit");
   if (!session) {
     return { error: "No signed-in user." };
   }
@@ -446,7 +459,7 @@ export async function updateRole(id: number, input: RoleInput) {
 }
 
 export async function deleteRole(id: number) {
-  const session = await requireUser();
+  const session = await requireUser("delete");
   if (!session) {
     return { error: "No signed-in user." };
   }

@@ -26,6 +26,8 @@ import type {
   PayrollRun,
   PayrollRunStatus,
 } from "@/components/payroll/payroll.types";
+import type { AccessAction } from "@/lib/access";
+import { requireFeature } from "./access";
 import { getPool, sql } from "./db";
 import { loadEngineWorld, type EngineWorld } from "./payroll";
 import { getSession, type SessionDTO } from "./session";
@@ -37,7 +39,31 @@ const READINESS =
 const IN_USE = "This record is in use.";
 const NO_SALARY = "No basic salary set in Component assignment";
 
-async function requireCompany(): Promise<CompanySession | { error: string }> {
+function requireCompany(feature: string, action: AccessAction) {
+  return requireFeature(feature, action);
+}
+
+function planFeature(kind: DeductionPlanKind) {
+  if (kind === "Loan") {
+    return "loanManagement";
+  }
+  if (kind === "Advance") {
+    return "advancePayments";
+  }
+  return "paymentsRecovery";
+}
+
+function runFeature(table: "payroll_runs" | "mid_month_runs" | "overtime_runs") {
+  if (table === "payroll_runs") {
+    return "monthlyPayrollProcessing";
+  }
+  if (table === "mid_month_runs") {
+    return "midMonthPayrollProcessing";
+  }
+  return "overtimeMonthPayrollProcessing";
+}
+
+async function requirePlan(id: number, action: AccessAction) {
   const session = await getSession();
   if (!session) {
     return { error: "No signed-in user." };
@@ -45,7 +71,30 @@ async function requireCompany(): Promise<CompanySession | { error: string }> {
   if (!session.company) {
     return { error: "No current company." };
   }
-  return session as CompanySession;
+  const pool = await getPool();
+  const result = await pool
+    .request()
+    .input("id", sql.Int, id)
+    .input("companyId", sql.Int, session.company.id)
+    .query<{ kind: DeductionPlanKind }>(`
+      SELECT kind
+      FROM dbo.deduction_plans
+      WHERE id = @id AND company_id = @companyId
+    `);
+  const kind = result.recordset[0]?.kind;
+  if (!kind) {
+    return { error: "This record was not found." };
+  }
+  return requireCompany(planFeature(kind), action);
+}
+
+async function worldForPlan(id: number, action: AccessAction) {
+  const session = await requirePlan(id, action);
+  if ("error" in session) {
+    return session;
+  }
+  const pool = await getPool();
+  return { session, pool, world: await loadEngineWorld(session.company.id, pool) };
 }
 
 function errorNumber(error: unknown) {
@@ -96,8 +145,8 @@ function orderBy(sortKey: string, direction: "asc" | "desc", columns: Record<str
   return `${column} ${direction === "desc" ? "DESC" : "ASC"}`;
 }
 
-async function worldForSession() {
-  const session = await requireCompany();
+async function worldForSession(feature: string, action: AccessAction) {
+  const session = await requireCompany(feature, action);
   if ("error" in session) {
     return session;
   }
@@ -126,7 +175,7 @@ function planReference(kind: DeductionPlanKind, id: number) {
 }
 
 export async function listOvertimeSettings(list: PayrollListQuery) {
-  const loaded = await worldForSession();
+  const loaded = await worldForSession("overtimeRates", "view");
   if ("error" in loaded) {
     return { rows: [], totalCount: 0, standardMonthlyHours: 0 };
   }
@@ -167,7 +216,7 @@ export async function saveOvertimeType(values: {
   taxable: boolean;
   active: boolean;
 }) {
-  const session = await requireCompany();
+  const session = await requireCompany("overtimeRates", values.id ? "edit" : "create");
   if ("error" in session) {
     return session;
   }
@@ -215,7 +264,7 @@ export async function saveOvertimeType(values: {
 }
 
 export async function deleteOvertimeType(id: number) {
-  const session = await requireCompany();
+  const session = await requireCompany("overtimeRates", "delete");
   if ("error" in session) {
     return session;
   }
@@ -239,7 +288,7 @@ export async function deleteOvertimeType(id: number) {
 }
 
 export async function saveOvertimeHours(hours: number) {
-  const session = await requireCompany();
+  const session = await requireCompany("overtimeRates", "edit");
   if ("error" in session) {
     return session;
   }
@@ -262,7 +311,7 @@ export async function saveOvertimeHours(hours: number) {
 }
 
 export async function listPayAssignments(list: PayrollListQuery) {
-  const loaded = await worldForSession();
+  const loaded = await worldForSession("componentAssignment", "view");
   if ("error" in loaded) {
     return { rows: [], totalCount: 0 };
   }
@@ -316,7 +365,7 @@ export async function listPayAssignments(list: PayrollListQuery) {
 }
 
 export async function getPayAssignment(employeeId: number) {
-  const loaded = await worldForSession();
+  const loaded = await worldForSession("componentAssignment", "view");
   if ("error" in loaded) {
     return loaded;
   }
@@ -352,7 +401,7 @@ export async function savePayAssignment(values: {
   components: { componentId: string; value: number }[];
   contributionIds: string[];
 }) {
-  const session = await requireCompany();
+  const session = await requireCompany("componentAssignment", "edit");
   if ("error" in session) {
     return session;
   }
@@ -430,7 +479,7 @@ export async function savePayAssignment(values: {
 const HOLD_NAME = `LTRIM(RTRIM(CONCAT(e.first_name, N' ', CASE WHEN e.middle_name IS NULL OR e.middle_name = N'' THEN N'' ELSE e.middle_name + N' ' END, e.last_name)))`;
 
 export async function listSalaryHolds(list: PayrollListQuery) {
-  const session = await requireCompany();
+  const session = await requireCompany("employeeSalaryOnHold", "view");
   if ("error" in session) {
     return { rows: [], totalCount: 0 };
   }
@@ -512,7 +561,7 @@ export async function listSalaryHolds(list: PayrollListQuery) {
 }
 
 export async function listHoldEmployees(includeId?: number) {
-  const session = await requireCompany();
+  const session = await requireCompany("employeeSalaryOnHold", "view");
   if ("error" in session) {
     return [];
   }
@@ -538,7 +587,7 @@ export async function saveSalaryHold(values: {
   toPeriod: string;
   reason: string;
 }) {
-  const session = await requireCompany();
+  const session = await requireCompany("employeeSalaryOnHold", values.id ? "edit" : "create");
   if ("error" in session) {
     return session;
   }
@@ -606,7 +655,7 @@ export async function saveSalaryHold(values: {
 }
 
 export async function releaseSalaryHold(id: number) {
-  const session = await requireCompany();
+  const session = await requireCompany("employeeSalaryOnHold", "edit");
   if ("error" in session) {
     return session;
   }
@@ -628,7 +677,7 @@ export async function releaseSalaryHold(id: number) {
 }
 
 export async function deleteSalaryHold(id: number) {
-  const session = await requireCompany();
+  const session = await requireCompany("employeeSalaryOnHold", "delete");
   if ("error" in session) {
     return session;
   }
@@ -652,7 +701,7 @@ function findPlan(world: EngineWorld, id: number) {
 }
 
 export async function listDeductionPlans(kind: DeductionPlanKind, list: PayrollListQuery) {
-  const loaded = await worldForSession();
+  const loaded = await worldForSession(planFeature(kind), "view");
   if ("error" in loaded) {
     return {
       rows: [],
@@ -755,7 +804,7 @@ export async function listDeductionPlans(kind: DeductionPlanKind, list: PayrollL
 }
 
 export async function getDeductionPlan(id: number) {
-  const loaded = await worldForSession();
+  const loaded = await worldForPlan(id, "view");
   if ("error" in loaded) {
     return loaded;
   }
@@ -794,7 +843,7 @@ export async function saveDeductionPlan(values: {
   installment: number;
   startPeriod: string;
 }) {
-  const loaded = await worldForSession();
+  const loaded = await worldForSession(planFeature(values.kind), values.id ? "edit" : "create");
   if ("error" in loaded) {
     return loaded;
   }
@@ -890,7 +939,7 @@ async function updatePlanStatus(
   extra: string,
   inputs: (request: sql.Request) => void,
 ) {
-  const session = await requireCompany();
+  const session = await requirePlan(id, "edit");
   if ("error" in session) {
     return session;
   }
@@ -951,7 +1000,7 @@ export async function closeDeductionPlan(id: number, reason: string) {
   if (!comment) {
     return { error: "Add a reason for closing this record." };
   }
-  const session = await requireCompany();
+  const session = await requirePlan(id, "edit");
   if ("error" in session) {
     return session;
   }
@@ -974,7 +1023,7 @@ export async function closeDeductionPlan(id: number, reason: string) {
 }
 
 export async function addPlanRepayment(id: number, amount: number, date: string, note: string) {
-  const loaded = await worldForSession();
+  const loaded = await worldForPlan(id, "edit");
   if ("error" in loaded) {
     return loaded;
   }
@@ -1009,7 +1058,7 @@ export async function addPlanRepayment(id: number, amount: number, date: string,
 }
 
 export async function deletePlanRepayment(planId: number, repaymentId: number) {
-  const session = await requireCompany();
+  const session = await requirePlan(planId, "delete");
   if ("error" in session) {
     return session;
   }
@@ -1030,7 +1079,7 @@ export async function deletePlanRepayment(planId: number, repaymentId: number) {
 }
 
 export async function deleteDeductionPlan(id: number) {
-  const loaded = await worldForSession();
+  const loaded = await worldForPlan(id, "delete");
   if ("error" in loaded) {
     return loaded;
   }
@@ -1212,7 +1261,7 @@ async function replaceMonthlyLines(
 }
 
 export async function createMonthlyRun(period: string) {
-  const loaded = await worldForSession();
+  const loaded = await worldForSession("monthlyPayrollProcessing", "run");
   if ("error" in loaded) {
     return loaded;
   }
@@ -1262,7 +1311,7 @@ export async function createMonthlyRun(period: string) {
 }
 
 export async function listMonthlyRuns(list: PayrollListQuery) {
-  const session = await requireCompany();
+  const session = await requireCompany("monthlyPayrollProcessing", "view");
   if ("error" in session) {
     return { rows: [], totalCount: 0, readiness: "" };
   }
@@ -1371,7 +1420,7 @@ function emptyPay(employeeId: string): PayrollRun["lines"][number] {
 }
 
 export async function getMonthlyRun(id: number, search = "") {
-  const session = await requireCompany();
+  const session = await requireCompany("monthlyPayrollProcessing", "view");
   if ("error" in session) {
     return session;
   }
@@ -1609,7 +1658,7 @@ export async function getMonthlyRun(id: number, search = "") {
 }
 
 export async function recalculateMonthlyRun(id: number) {
-  const loaded = await worldForSession();
+  const loaded = await worldForSession("monthlyPayrollProcessing", "run");
   if ("error" in loaded) {
     return loaded;
   }
@@ -1647,8 +1696,8 @@ export async function recalculateMonthlyRun(id: number) {
   }
 }
 
-async function setRunStatus(table: "payroll_runs" | "mid_month_runs" | "overtime_runs", id: number, from: PayrollRunStatus, to: PayrollRunStatus, fields: string) {
-  const session = await requireCompany();
+async function setRunStatus(table: "payroll_runs" | "mid_month_runs" | "overtime_runs", id: number, from: PayrollRunStatus, to: PayrollRunStatus, fields: string, action: AccessAction) {
+  const session = await requireCompany(runFeature(table), action);
   if ("error" in session) {
     return session;
   }
@@ -1676,7 +1725,7 @@ export function approveNamedRun(table: "payroll_runs" | "mid_month_runs" | "over
     return Promise.resolve({ error: "Enter the approver's name." });
   }
   return (async () => {
-    const session = await requireCompany();
+    const session = await requireCompany(runFeature(table), table === "payroll_runs" ? "approve" : "run");
     if ("error" in session) {
       return session;
     }
@@ -1700,15 +1749,15 @@ export function approveNamedRun(table: "payroll_runs" | "mid_month_runs" | "over
 }
 
 export function reopenNamedRun(table: "payroll_runs" | "mid_month_runs" | "overtime_runs", id: number) {
-  return setRunStatus(table, id, "Approved", "Draft", ", approved_by = N'', approved_on = NULL");
+  return setRunStatus(table, id, "Approved", "Draft", ", approved_by = N'', approved_on = NULL", "edit");
 }
 
 export function lockNamedRun(table: "payroll_runs" | "mid_month_runs" | "overtime_runs", id: number) {
-  return setRunStatus(table, id, "Approved", "Locked", ", locked_on = @today");
+  return setRunStatus(table, id, "Approved", "Locked", ", locked_on = @today", "run");
 }
 
 export async function deleteMonthlyRun(id: number) {
-  const session = await requireCompany();
+  const session = await requireCompany("monthlyPayrollProcessing", "delete");
   if ("error" in session) {
     return session;
   }
@@ -1738,7 +1787,7 @@ export async function deleteMonthlyRun(id: number) {
 }
 
 export async function createMidMonthRun(period: string, basis: MidMonthBasis, value: number, paymentDate: string) {
-  const loaded = await worldForSession();
+  const loaded = await worldForSession("midMonthPayrollProcessing", "run");
   if ("error" in loaded) {
     return loaded;
   }
@@ -1862,7 +1911,7 @@ async function writeMidMonthLines(
 }
 
 export async function listMidMonthRuns(list: PayrollListQuery) {
-  const session = await requireCompany();
+  const session = await requireCompany("midMonthPayrollProcessing", "view");
   if ("error" in session) {
     return { rows: [], totalCount: 0, readiness: "" };
   }
@@ -1917,7 +1966,7 @@ export async function listMidMonthRuns(list: PayrollListQuery) {
 }
 
 export async function getMidMonthRun(id: number) {
-  const session = await requireCompany();
+  const session = await requireCompany("midMonthPayrollProcessing", "view");
   if ("error" in session) {
     return session;
   }
@@ -2014,7 +2063,7 @@ export async function getMidMonthRun(id: number) {
 }
 
 export async function setMidMonthAmount(id: number, employeeId: number, amount: number | null) {
-  const session = await requireCompany();
+  const session = await requireCompany("midMonthPayrollProcessing", "edit");
   if ("error" in session) {
     return session;
   }
@@ -2053,7 +2102,7 @@ export async function setMidMonthAmount(id: number, employeeId: number, amount: 
 }
 
 export async function recalculateMidMonthRun(id: number, setup?: { basis: MidMonthBasis; value: number; paymentDate: string }) {
-  const loaded = await worldForSession();
+  const loaded = await worldForSession("midMonthPayrollProcessing", "run");
   if ("error" in loaded) {
     return loaded;
   }
@@ -2129,7 +2178,7 @@ export async function recalculateMidMonthRun(id: number, setup?: { basis: MidMon
 }
 
 export async function deleteMidMonthRun(id: number) {
-  const session = await requireCompany();
+  const session = await requireCompany("midMonthPayrollProcessing", "delete");
   if ("error" in session) {
     return session;
   }
@@ -2162,7 +2211,7 @@ export async function deleteMidMonthRun(id: number) {
 }
 
 export async function lockMidMonthRun(id: number) {
-  const loaded = await worldForSession();
+  const loaded = await worldForSession("midMonthPayrollProcessing", "run");
   if ("error" in loaded) {
     return loaded;
   }
@@ -2181,7 +2230,7 @@ export async function lockMidMonthRun(id: number) {
 }
 
 export async function createOvertimeRun(period: string, payPeriod: string) {
-  const loaded = await worldForSession();
+  const loaded = await worldForSession("overtimeMonthPayrollProcessing", "run");
   if ("error" in loaded) {
     return loaded;
   }
@@ -2215,7 +2264,7 @@ export async function createOvertimeRun(period: string, payPeriod: string) {
 }
 
 export async function listOvertimeRuns(list: PayrollListQuery) {
-  const session = await requireCompany();
+  const session = await requireCompany("overtimeMonthPayrollProcessing", "view");
   if ("error" in session) {
     return { rows: [], totalCount: 0, problems: [] as string[] };
   }
@@ -2261,7 +2310,7 @@ export async function listOvertimeRuns(list: PayrollListQuery) {
 }
 
 export async function getOvertimeRun(id: number) {
-  const session = await requireCompany();
+  const session = await requireCompany("overtimeMonthPayrollProcessing", "view");
   if ("error" in session) {
     return session;
   }
@@ -2479,7 +2528,7 @@ async function rebuildOvertime(transaction: sql.Transaction, companyId: number, 
 }
 
 export async function saveOvertimeEntry(runId: number, values: { employeeId: number; typeId: number; date: string; hours: number; note: string }) {
-  const loaded = await worldForSession();
+  const loaded = await worldForSession("overtimeMonthPayrollProcessing", "edit");
   if ("error" in loaded) {
     return loaded;
   }
@@ -2553,7 +2602,7 @@ export async function saveOvertimeEntry(runId: number, values: { employeeId: num
 }
 
 export async function deleteOvertimeEntry(runId: number, entryId: number) {
-  const loaded = await worldForSession();
+  const loaded = await worldForSession("overtimeMonthPayrollProcessing", "delete");
   if ("error" in loaded) {
     return loaded;
   }
@@ -2602,7 +2651,7 @@ export async function deleteOvertimeEntry(runId: number, entryId: number) {
 }
 
 export async function setOvertimePayPeriod(id: number, payPeriod: string) {
-  const loaded = await worldForSession();
+  const loaded = await worldForSession("overtimeMonthPayrollProcessing", "edit");
   if ("error" in loaded) {
     return loaded;
   }
@@ -2630,7 +2679,7 @@ export async function setOvertimePayPeriod(id: number, payPeriod: string) {
 }
 
 export async function recalculateOvertimeRun(id: number) {
-  const loaded = await worldForSession();
+  const loaded = await worldForSession("overtimeMonthPayrollProcessing", "run");
   if ("error" in loaded) {
     return loaded;
   }
@@ -2679,7 +2728,7 @@ export async function recalculateOvertimeRun(id: number) {
 }
 
 export async function lockOvertimeRun(id: number) {
-  const loaded = await worldForSession();
+  const loaded = await worldForSession("overtimeMonthPayrollProcessing", "run");
   if ("error" in loaded) {
     return loaded;
   }
@@ -2698,7 +2747,7 @@ export async function lockOvertimeRun(id: number) {
 }
 
 export async function deleteOvertimeRun(id: number) {
-  const session = await requireCompany();
+  const session = await requireCompany("overtimeMonthPayrollProcessing", "delete");
   if ("error" in session) {
     return session;
   }
@@ -2735,7 +2784,7 @@ export async function deleteOvertimeRun(id: number) {
 }
 
 export async function listPayslips(list: PayrollListQuery & { employeeId: string; month: string; year: string }) {
-  const session = await requireCompany();
+  const session = await requireCompany("payslipViewer", "view");
   if ("error" in session) {
     return { rows: [], totalCount: 0, employees: [] as { id: number; name: string }[], years: [] as string[] };
   }
@@ -2829,7 +2878,7 @@ export async function listPayslips(list: PayrollListQuery & { employeeId: string
 }
 
 export async function getPayslipLines(keys: string[]) {
-  const session = await requireCompany();
+  const session = await requireCompany("payslipViewer", "view");
   if ("error" in session) {
     return session;
   }

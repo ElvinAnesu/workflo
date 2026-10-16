@@ -2,6 +2,13 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { cache } from "react";
 import { cookies } from "next/headers";
+import {
+  emptyPermissionActions,
+  emptyPermissions,
+  PERMISSION_FEATURES,
+} from "@/components/roles/permission-features";
+import type { RolePermissionActions } from "@/components/roles/role.types";
+import type { AccessSnapshot } from "@/lib/access";
 import { SESSION_COOKIE } from "@/lib/session-cookie";
 import { readCompanyCookie } from "./company-cookie";
 import { getPool, sql } from "./db";
@@ -16,6 +23,7 @@ export type SessionDTO = {
   user: { id: number; username: string; fullName: string };
   company: SessionCompany | null;
   companies: SessionCompany[];
+  access: AccessSnapshot;
 };
 
 export function hashSessionToken(token: string) {
@@ -38,10 +46,20 @@ export const getSession = cache(async (): Promise<SessionDTO | null> => {
       user_id: number;
       username: string;
       full_name: string | null;
+      is_super_user: boolean;
+      role_id: number | null;
+      role_is_active: boolean | null;
     }>(`
-      SELECT u.id AS user_id, u.username, u.full_name
+      SELECT
+        u.id AS user_id,
+        u.username,
+        u.full_name,
+        u.is_super_user,
+        u.role_id,
+        r.is_active AS role_is_active
       FROM dbo.user_sessions AS s
       INNER JOIN dbo.users AS u ON u.id = s.user_id
+      LEFT JOIN dbo.roles AS r ON r.id = u.role_id
       WHERE s.token_hash = @tokenHash
         AND s.expires_at > SYSUTCDATETIME()
         AND u.is_active = 1
@@ -75,6 +93,30 @@ export const getSession = cache(async (): Promise<SessionDTO | null> => {
       ? selected
       : (companies.find((company) => company.isActive) ?? null);
 
+  const isSuperUser = Boolean(userRow.is_super_user);
+  const permissions = emptyPermissions();
+  if (!isSuperUser && userRow.role_id && userRow.role_is_active) {
+    const permissionResult = await pool
+      .request()
+      .input("roleId", sql.Int, userRow.role_id)
+      .query<{
+        feature_key: string;
+        can_read: boolean;
+        can_insert: boolean;
+        can_update: boolean;
+        can_delete: boolean;
+        can_run: boolean;
+        can_approve: boolean;
+      }>(`
+        SELECT feature_key, can_read, can_insert, can_update, can_delete, can_run, can_approve
+        FROM dbo.role_permissions
+        WHERE role_id = @roleId
+      `);
+    for (const row of permissionResult.recordset) {
+      permissions[row.feature_key] = permissionActions(row);
+    }
+  }
+
   return {
     user: {
       id: userRow.user_id,
@@ -83,5 +125,27 @@ export const getSession = cache(async (): Promise<SessionDTO | null> => {
     },
     company: current,
     companies,
+    access: { isSuperUser, permissions },
   };
 });
+
+function permissionActions(row: {
+  feature_key: string;
+  can_read: boolean;
+  can_insert: boolean;
+  can_update: boolean;
+  can_delete: boolean;
+  can_run: boolean;
+  can_approve: boolean;
+}): RolePermissionActions {
+  const feature = PERMISSION_FEATURES.find((item) => item.key === row.feature_key);
+  return {
+    ...emptyPermissionActions(Boolean(feature?.hasRun), Boolean(feature?.hasApprove)),
+    view: Boolean(row.can_read),
+    create: Boolean(row.can_insert),
+    edit: Boolean(row.can_update),
+    delete: Boolean(row.can_delete),
+    ...(feature?.hasRun ? { run: Boolean(row.can_run) } : {}),
+    ...(feature?.hasApprove ? { approve: Boolean(row.can_approve) } : {}),
+  };
+}

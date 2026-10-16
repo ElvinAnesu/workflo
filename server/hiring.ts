@@ -1,4 +1,6 @@
 import "server-only";
+import type { AccessAction } from "@/lib/access";
+import { requireAnyFeature, requireFeature } from "./access";
 import {
   CANDIDATE_SOURCES,
   CANDIDATE_STATUSES,
@@ -16,7 +18,7 @@ import {
 } from "@/components/hiring/hiring.types";
 import { getPool, sql } from "./db";
 import { listEmployeeFormOptions, peekNextEmployeeCode } from "./employees";
-import { getSession, type SessionDTO } from "./session";
+import type { SessionDTO } from "./session";
 
 type CompanySession = SessionDTO & { company: NonNullable<SessionDTO["company"]> };
 
@@ -215,15 +217,8 @@ const CANDIDATE_COLUMNS = `
   e.employee_code
 `;
 
-async function requireCompany(): Promise<CompanySession | { error: string }> {
-  const session = await getSession();
-  if (!session) {
-    return { error: "No signed-in user." };
-  }
-  if (!session.company) {
-    return { error: "No current company." };
-  }
-  return session as CompanySession;
+function requireCompany(feature: string, action: AccessAction) {
+  return requireFeature(feature, action);
 }
 
 function errorNumber(error: unknown) {
@@ -410,7 +405,7 @@ const CANDIDATE_WHERE = `
 `;
 
 export async function listHiringRequests(query: HiringListQuery) {
-  const session = await requireCompany();
+  const session = await requireCompany("hiringRequests", "view");
   if ("error" in session) {
     return { rows: [] as HiringRequestListRow[], totalCount: 0 };
   }
@@ -449,7 +444,7 @@ export async function listHiringRequests(query: HiringListQuery) {
 }
 
 export async function listHiringRequestsForExport(query: Omit<HiringListQuery, "page" | "pageSize">) {
-  const session = await requireCompany();
+  const session = await requireCompany("hiringRequests", "view");
   if ("error" in session) {
     return [] as HiringRequestListRow[];
   }
@@ -470,7 +465,7 @@ export async function listHiringRequestsForExport(query: Omit<HiringListQuery, "
 }
 
 export async function listHiringCandidates(query: HiringListQuery) {
-  const session = await requireCompany();
+  const session = await requireCompany("candidates", "view");
   if ("error" in session) {
     return { rows: [] as HiringCandidateListRow[], totalCount: 0 };
   }
@@ -509,7 +504,7 @@ export async function listHiringCandidates(query: HiringListQuery) {
 }
 
 export async function listHiringCandidatesForExport(query: Omit<HiringListQuery, "page" | "pageSize">) {
-  const session = await requireCompany();
+  const session = await requireCompany("candidates", "view");
   if ("error" in session) {
     return [] as HiringCandidateListRow[];
   }
@@ -530,7 +525,10 @@ export async function listHiringCandidatesForExport(query: Omit<HiringListQuery,
 }
 
 export async function listHiringFormOptions(): Promise<HiringFormOptions> {
-  const session = await requireCompany();
+  const session = await requireAnyFeature([
+    { feature: "hiringRequests", action: "view" },
+    { feature: "candidates", action: "view" },
+  ]);
   const empty: HiringFormOptions = {
     departments: [],
     branches: [],
@@ -570,7 +568,7 @@ async function listApprovedRequestOptions(companyId: number) {
 }
 
 export async function getHiringRequest(id: number) {
-  const session = await requireCompany();
+  const session = await requireCompany("hiringRequests", "view");
   if ("error" in session) {
     return null;
   }
@@ -734,7 +732,7 @@ function bindRequest(request: sql.Request, companyId: number, input: ReturnType<
 }
 
 export async function createHiringRequest(input: HiringRequestSaveInput) {
-  const session = await requireCompany();
+  const session = await requireCompany("hiringRequests", "create");
   if ("error" in session) {
     return session;
   }
@@ -776,7 +774,7 @@ export async function createHiringRequest(input: HiringRequestSaveInput) {
 }
 
 export async function updateHiringRequest(id: number, input: HiringRequestSaveInput) {
-  const session = await requireCompany();
+  const session = await requireCompany("hiringRequests", "edit");
   if ("error" in session) {
     return session;
   }
@@ -847,7 +845,7 @@ export async function decideHiringRequest(
   decisionBy: string,
   decisionComment: string,
 ) {
-  const session = await requireCompany();
+  const session = await requireCompany("hiringRequests", "approve");
   if ("error" in session) {
     return session;
   }
@@ -891,7 +889,7 @@ export async function decideHiringRequest(
 }
 
 export async function cancelHiringRequest(id: number) {
-  const session = await requireCompany();
+  const session = await requireCompany("hiringRequests", "edit");
   if ("error" in session) {
     return session;
   }
@@ -969,7 +967,7 @@ function validateCandidate(input: HiringCandidateSaveInput) {
 }
 
 export async function createHiringCandidate(input: HiringCandidateSaveInput) {
-  const session = await requireCompany();
+  const session = await requireCompany("candidates", "create");
   if ("error" in session) {
     return session;
   }
@@ -1033,7 +1031,7 @@ export async function createHiringCandidate(input: HiringCandidateSaveInput) {
 }
 
 export async function updateHiringCandidate(id: number, input: HiringCandidateSaveInput) {
-  const session = await requireCompany();
+  const session = await requireCompany("candidates", "edit");
   if ("error" in session) {
     return session;
   }
@@ -1089,7 +1087,7 @@ export async function updateHiringCandidate(id: number, input: HiringCandidateSa
 }
 
 export async function selectHiringCandidate(id: number) {
-  const session = await requireCompany();
+  const session = await requireCompany("candidates", "edit");
   if ("error" in session) {
     return session;
   }
@@ -1148,7 +1146,7 @@ export async function selectHiringCandidate(id: number) {
 }
 
 export async function unselectHiringCandidate(id: number) {
-  const session = await requireCompany();
+  const session = await requireCompany("candidates", "edit");
   if ("error" in session) {
     return session;
   }
@@ -1169,7 +1167,7 @@ export async function unselectHiringCandidate(id: number) {
 }
 
 export async function rejectHiringCandidate(id: number) {
-  const session = await requireCompany();
+  const session = await requireCompany("candidates", "edit");
   if ("error" in session) {
     return session;
   }
@@ -1192,7 +1190,7 @@ export async function rejectHiringCandidate(id: number) {
 }
 
 export async function confirmHiringCandidate(id: number, startDate: string) {
-  const session = await requireCompany();
+  const session = await requireCompany("candidates", "edit");
   if ("error" in session) {
     return session;
   }
@@ -1264,7 +1262,7 @@ export async function confirmHiringCandidate(id: number, startDate: string) {
 }
 
 export async function markHiringCandidateConverted(candidateId: number, employeeId: number) {
-  const session = await requireCompany();
+  const session = await requireCompany("candidates", "edit");
   if ("error" in session) {
     return session;
   }

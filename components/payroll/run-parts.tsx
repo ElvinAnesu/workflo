@@ -1,7 +1,10 @@
 "use client";
 
 import { Check, Lock, RefreshCw } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
+import { usePageCan } from "@/components/table/table-actions";
+import { featureForPath } from "@/lib/access";
 import {
   primaryButtonClass,
   secondaryButtonClass,
@@ -121,6 +124,12 @@ export function RunWorkflowBar({
 }: RunWorkflowBarProps) {
   const [approving, setApproving] = useState(false);
   const [approver, setApprover] = useState("");
+  const feature = featureForPath(usePathname());
+  const canRun = usePageCan("run");
+  const canApproveFlag = usePageCan("approve");
+  const canApprove = feature === "monthlyPayrollProcessing" ? canApproveFlag : canRun;
+  const canEdit = usePageCan("edit");
+  const canDelete = usePageCan("delete");
 
   function handleApprove() {
     if (!approver.trim()) {
@@ -135,13 +144,14 @@ export function RunWorkflowBar({
     <div className="flex flex-wrap items-center gap-2 print:hidden">
       {status === "Draft" ? (
         <>
-          {onRecalculate ? (
+          {onRecalculate && canRun ? (
             <button type="button" onClick={onRecalculate} className={secondaryButtonClass}>
               <RefreshCw className="size-4" />
               Recalculate
             </button>
           ) : null}
-          {approving ? (
+          {canApprove ? (
+            approving ? (
             <span className="flex items-center gap-2">
               <input
                 autoFocus
@@ -161,7 +171,7 @@ export function RunWorkflowBar({
                 Cancel
               </button>
             </span>
-          ) : (
+            ) : (
             <button
               type="button"
               disabled={Boolean(approveBlockedReason)}
@@ -172,7 +182,9 @@ export function RunWorkflowBar({
               <Check className="size-4" />
               Approve
             </button>
-          )}
+            )
+          ) : null}
+          {canDelete ? (
           <button
             type="button"
             onClick={onDelete}
@@ -180,17 +192,22 @@ export function RunWorkflowBar({
           >
             Delete draft
           </button>
+          ) : null}
         </>
       ) : null}
       {status === "Approved" ? (
         <>
+          {canRun ? (
           <button type="button" onClick={onLock} className={primaryButtonClass}>
             <Lock className="size-4" />
             Lock
           </button>
+          ) : null}
+          {canEdit ? (
           <button type="button" onClick={onReopen} className={secondaryButtonClass}>
             Back to draft
           </button>
+          ) : null}
         </>
       ) : null}
       {children ? <span className="ml-auto flex flex-wrap gap-2">{children}</span> : null}

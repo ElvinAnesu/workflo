@@ -17,6 +17,7 @@ import { formControlClass } from "@/components/form/form-control";
 import { nextSort, payrollQuery } from "@/components/payroll/list-query";
 import type { BankListRow } from "@/components/payroll/payroll.types";
 import { DataTable } from "@/components/table/data-table";
+import { usePageCan } from "@/components/table/table-actions";
 import { RowActions } from "@/components/table/table-actions";
 import type { DataTableColumn, DataTableSort } from "@/components/table/data-table.types";
 
@@ -94,6 +95,9 @@ export function BanksPage({
   sort: DataTableSort;
 }) {
   const overlay = useOverlayDialog();
+  const canCreate = usePageCan("create");
+  const canEdit = usePageCan("edit");
+  const canDelete = usePageCan("delete");
   const router = useRouter();
   const pathname = usePathname();
 
@@ -117,8 +121,9 @@ export function BanksPage({
         key: "actions",
         label: "Actions",
         sortable: false,
-        render: (row) => (
+        render: (row) => canEdit || canDelete ? (
           <RowActions>
+            {canEdit ? (
             <button
               type="button"
               onClick={() =>
@@ -128,6 +133,8 @@ export function BanksPage({
             >
               Edit
             </button>
+            ) : null}
+            {canDelete ? (
             <button
               type="button"
               onClick={() => {
@@ -139,11 +146,12 @@ export function BanksPage({
             >
               Delete
             </button>
+            ) : null}
           </RowActions>
-        ),
+        ) : null,
       },
     ],
-    [overlay, router],
+    [canDelete, canEdit, overlay, router],
   );
 
   return (
@@ -162,6 +170,7 @@ export function BanksPage({
       searchPlaceholder="Search banks…"
       emptyMessage="No banks yet"
       actions={
+        canCreate ? (
         <button
           type="button"
           onClick={() => overlay.show(<BankDialog key={`new-${Date.now()}`} bank={null} onClose={overlay.close} />)}
@@ -170,6 +179,7 @@ export function BanksPage({
           <Plus className="size-4" />
           Add
         </button>
+        ) : null
       }
     />
   );

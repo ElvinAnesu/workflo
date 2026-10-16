@@ -1,11 +1,19 @@
 "use client";
 
 import { Download, MoreVertical, Plus, Upload } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { downloadCsv } from "@/components/payroll/csv-export";
+import { useCan } from "@/components/session/session-context";
 import type { DataTableColumn } from "@/components/table/data-table.types";
+import { featureForPath, type AccessAction } from "@/lib/access";
 
 const SKIPPED_KEYS = new Set(["index", "actions", "select"]);
+
+export function usePageCan(action: AccessAction) {
+  const feature = featureForPath(usePathname()) ?? "";
+  return useCan(feature, action);
+}
 
 // Exports every row passed in, using the table's own column labels.
 export function exportTable<T>(
@@ -51,6 +59,7 @@ export function TableActions({
   addLabel = "Add",
   children,
 }: TableActionsProps) {
+  const canCreate = usePageCan("create");
   return (
     <>
       {children}
@@ -65,7 +74,7 @@ export function TableActions({
           Export
         </button>
       ) : null}
-      {onImport ? (
+      {onImport && canCreate ? (
         <button
           type="button"
           onClick={onImport}
@@ -75,7 +84,7 @@ export function TableActions({
           Import
         </button>
       ) : null}
-      {onAdd ? (
+      {onAdd && canCreate ? (
         <button
           type="button"
           onClick={onAdd}
@@ -98,6 +107,10 @@ export function RowActions({
   onDelete?: () => void;
   children?: ReactNode;
 }) {
+  const canEdit = usePageCan("edit");
+  const canDelete = usePageCan("delete");
+  const edit = canEdit ? onEdit : undefined;
+  const remove = canDelete ? onDelete : undefined;
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -144,6 +157,10 @@ export function RowActions({
     setOpen((current) => !current);
   }
 
+  if (!edit && !remove && !children) {
+    return null;
+  }
+
   return (
     <div ref={rootRef} className="inline-flex">
       <button
@@ -169,13 +186,13 @@ export function RowActions({
           }}
         >
           {children}
-          {onEdit ? (
-            <button type="button" onClick={onEdit} className="text-[#1E40AF]">
+          {edit ? (
+            <button type="button" onClick={edit} className="text-[#1E40AF]">
               Edit
             </button>
           ) : null}
-          {onDelete ? (
-            <button type="button" onClick={onDelete} className="text-red-600">
+          {remove ? (
+            <button type="button" onClick={remove} className="text-red-600">
               Delete
             </button>
           ) : null}

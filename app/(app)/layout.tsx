@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
 import {
@@ -6,7 +6,7 @@ import {
   SIDEBAR_STATE_COOKIE,
 } from "@/components/layout/sidebar-state";
 import { SessionProvider } from "@/components/session/session-context";
-import { SESSION_COOKIE } from "@/lib/session-cookie";
+import { can, featureForPath, firstAllowedHref } from "@/lib/access";
 import { getSession } from "@/server/session";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
@@ -16,8 +16,13 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   );
   const session = await getSession();
   if (!session) {
-    cookieStore.delete(SESSION_COOKIE);
     redirect("/login");
+  }
+
+  const pathname = (await headers()).get("x-pathname") ?? "";
+  const feature = featureForPath(pathname);
+  if (feature && !can(session.access, feature, "view")) {
+    redirect(firstAllowedHref(session.access) ?? "/");
   }
 
   return (

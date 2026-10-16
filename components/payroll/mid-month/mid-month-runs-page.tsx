@@ -15,7 +15,7 @@ import { MID_MONTH_BASES, type MidMonthBasis, type PayrollRunStatus } from "@/co
 import { currentPeriod } from "@/components/payroll/run-parts";
 import { RunStatusBadge } from "@/components/payroll/run-status-badge";
 import { DataTable } from "@/components/table/data-table";
-import { RowActions } from "@/components/table/table-actions";
+import { RowActions, usePageCan } from "@/components/table/table-actions";
 import type { DataTableColumn, DataTableSort } from "@/components/table/data-table.types";
 
 const invalidClass = "h-7 rounded-md border border-red-500 bg-red-50 px-2 text-xs text-zinc-700 outline-none";
@@ -50,6 +50,7 @@ export function MidMonthRunsPage({
   readiness: string;
 }) {
   const router = useRouter();
+  const canRun = usePageCan("run");
   const pathname = usePathname();
   const [period, setPeriod] = useState(currentPeriod);
   const [basis, setBasis] = useState<MidMonthBasis>("% of basic salary");
@@ -191,6 +192,7 @@ export function MidMonthRunsPage({
             className={submitted && !paymentDate ? invalidClass : formControlClass}
           />
         </label>
+        {canRun ? (
         <button
           type="button"
           onClick={() => {
@@ -202,6 +204,7 @@ export function MidMonthRunsPage({
           <Play className="size-4" />
           Run mid-month payroll
         </button>
+        ) : null}
         {error ? <p className="self-center text-xs text-red-600">{error}</p> : null}
       </div>
 

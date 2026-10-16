@@ -13,7 +13,7 @@ import { formatPeriod } from "@/components/payroll/payroll-run-builder";
 import type { RunListRow } from "@/components/payroll/payroll.types";
 import { RunStatusBadge } from "@/components/payroll/run-status-badge";
 import { DataTable } from "@/components/table/data-table";
-import { RowActions } from "@/components/table/table-actions";
+import { RowActions, usePageCan } from "@/components/table/table-actions";
 import type { DataTableColumn, DataTableSort } from "@/components/table/data-table.types";
 
 const invalidClass = "h-7 rounded-md border border-red-500 bg-red-50 px-2 text-xs text-zinc-700 outline-none";
@@ -40,6 +40,7 @@ export function PayrollRunsPage({
   const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
   const [error, setError] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const canRun = usePageCan("run");
 
   function replaceQuery(next: { search?: string; page?: number; pageSize?: number; sort?: DataTableSort }) {
     router.push(
@@ -132,6 +133,7 @@ export function PayrollRunsPage({
             className={submitted && !period ? invalidClass : formControlClass}
           />
         </label>
+        {canRun ? (
         <button
           type="button"
           onClick={() => {
@@ -143,6 +145,7 @@ export function PayrollRunsPage({
           <Play className="size-4" />
           Run payroll
         </button>
+        ) : null}
         {error ? <p className="self-center text-xs text-red-600">{error}</p> : null}
       </div>
 

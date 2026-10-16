@@ -1,4 +1,6 @@
 import "server-only";
+import type { AccessAction } from "@/lib/access";
+import { requireAnyFeature, requireFeature } from "./access";
 import type {
   LeaveBalanceInput,
   LeaveBalanceListRow,
@@ -30,7 +32,7 @@ import type {
   LeaveTypeOption,
 } from "@/components/leave-types/leave-type.types";
 import { getPool, sql } from "./db";
-import { getSession, type SessionDTO } from "./session";
+import type { SessionDTO } from "./session";
 
 type CompanySession = SessionDTO & { company: NonNullable<SessionDTO["company"]> };
 
@@ -329,15 +331,8 @@ type CalcBalanceSqlRow = {
   entitled: number | string;
 };
 
-async function requireCompany(): Promise<CompanySession | { error: string }> {
-  const session = await getSession();
-  if (!session) {
-    return { error: "No signed-in user." };
-  }
-  if (!session.company) {
-    return { error: "No current company." };
-  }
-  return session as CompanySession;
+function requireCompany(feature: string, action: AccessAction) {
+  return requireFeature(feature, action);
 }
 
 function errorNumber(error: unknown) {
@@ -672,7 +667,11 @@ async function requestProblems(
 }
 
 export async function listLeaveFormOptions() {
-  const session = await requireCompany();
+  const session = await requireAnyFeature([
+    { feature: "leaveTypes", action: "view" },
+    { feature: "leaveRequests", action: "view" },
+    { feature: "leaveBalances", action: "view" },
+  ]);
   if ("error" in session) {
     return {
       leaveTypes: [] as LeaveTypeOption[],
@@ -721,7 +720,7 @@ export async function listLeaveFormOptions() {
 const NO_DEPARTMENT = "No department";
 
 export async function listLeaveEmployees(query: LeaveEmployeeFilter): Promise<LeaveEmployeeChoice[]> {
-  const session = await requireCompany();
+  const session = await requireCompany("leaveTypes", "view");
   if ("error" in session) {
     return [];
   }
@@ -798,7 +797,7 @@ export async function listLeaveEmployees(query: LeaveEmployeeFilter): Promise<Le
 }
 
 export async function listRequestLeaveTypes(employeeId: number, includeTypeId: number | null) {
-  const session = await requireCompany();
+  const session = await requireCompany("leaveRequests", "view");
   if ("error" in session) {
     return [] as LeaveTypeOption[];
   }
@@ -829,7 +828,7 @@ export async function listRequestLeaveTypes(employeeId: number, includeTypeId: n
 }
 
 export async function listLeaveBalanceYears() {
-  const session = await requireCompany();
+  const session = await requireCompany("leaveBalances", "view");
   if ("error" in session) {
     return [] as number[];
   }
@@ -862,7 +861,7 @@ export async function leaveRemaining(query: {
   year: number;
   excludeRequestId: number | null;
 }) {
-  const session = await requireCompany();
+  const session = await requireCompany("leaveRequests", "view");
   if ("error" in session) {
     return { remaining: null as number | null };
   }
@@ -953,7 +952,7 @@ export async function leaveRemaining(query: {
 }
 
 export async function listLeaveTypes(query: ListQuery) {
-  const session = await requireCompany();
+  const session = await requireCompany("leaveTypes", "view");
   if ("error" in session) {
     return { rows: [] as LeaveTypeListRow[], totalCount: 0 };
   }
@@ -1007,7 +1006,7 @@ export async function listLeaveTypes(query: ListQuery) {
 }
 
 export async function listLeaveTypesForExport(query: Omit<ListQuery, "page" | "pageSize">) {
-  const session = await requireCompany();
+  const session = await requireCompany("leaveTypes", "view");
   if ("error" in session) {
     return [] as LeaveTypeListRow[];
   }
@@ -1093,7 +1092,7 @@ async function findDuplicateType(companyId: number, name: string, excludeId: num
 }
 
 export async function createLeaveType(input: LeaveTypeInput) {
-  const session = await requireCompany();
+  const session = await requireCompany("leaveTypes", "create");
   if ("error" in session) {
     return session;
   }
@@ -1142,7 +1141,7 @@ export async function createLeaveType(input: LeaveTypeInput) {
 }
 
 export async function updateLeaveType(id: number, input: LeaveTypeInput) {
-  const session = await requireCompany();
+  const session = await requireCompany("leaveTypes", "edit");
   if ("error" in session) {
     return session;
   }
@@ -1199,7 +1198,7 @@ export async function updateLeaveType(id: number, input: LeaveTypeInput) {
 }
 
 export async function deleteLeaveType(id: number) {
-  const session = await requireCompany();
+  const session = await requireCompany("leaveTypes", "delete");
   if ("error" in session) {
     return session;
   }
@@ -1287,7 +1286,7 @@ async function assignmentMap(companyId: number, typeIds: number[]) {
 }
 
 export async function listLeaveBalances(query: ListQuery & { year: number | null }) {
-  const session = await requireCompany();
+  const session = await requireCompany("leaveBalances", "view");
   if ("error" in session) {
     return { rows: [] as LeaveBalanceListRow[], totalCount: 0 };
   }
@@ -1337,7 +1336,7 @@ export async function listLeaveBalances(query: ListQuery & { year: number | null
 export async function listLeaveBalancesForExport(
   query: Omit<ListQuery, "page" | "pageSize"> & { year: number | null },
 ) {
-  const session = await requireCompany();
+  const session = await requireCompany("leaveBalances", "view");
   if ("error" in session) {
     return [] as LeaveBalanceListRow[];
   }
@@ -1371,7 +1370,7 @@ export async function listLeaveBalancesForExport(
 }
 
 export async function updateLeaveBalance(input: LeaveBalanceInput) {
-  const session = await requireCompany();
+  const session = await requireCompany("leaveBalances", "edit");
   if ("error" in session) {
     return session;
   }
@@ -1471,7 +1470,7 @@ export async function updateLeaveBalance(input: LeaveBalanceInput) {
 }
 
 export async function deleteLeaveBalance(employeeId: number, leaveTypeId: number, year: number) {
-  const session = await requireCompany();
+  const session = await requireCompany("leaveBalances", "delete");
   if ("error" in session) {
     return session;
   }
@@ -1502,7 +1501,7 @@ const REQUEST_WHERE = `
 `;
 
 export async function listLeaveRequests(query: ListQuery & { status: string }) {
-  const session = await requireCompany();
+  const session = await requireCompany("leaveRequests", "view");
   if ("error" in session) {
     return { rows: [] as LeaveRequestListRow[], totalCount: 0 };
   }
@@ -1560,7 +1559,7 @@ export async function listLeaveRequests(query: ListQuery & { status: string }) {
 export async function listLeaveRequestsForExport(
   query: Omit<ListQuery, "page" | "pageSize"> & { status: string },
 ) {
-  const session = await requireCompany();
+  const session = await requireCompany("leaveRequests", "view");
   if ("error" in session) {
     return [] as LeaveRequestListRow[];
   }
@@ -1599,7 +1598,7 @@ export async function listLeaveRequestsForExport(
 }
 
 export async function createLeaveRequest(input: LeaveRequestInput) {
-  const session = await requireCompany();
+  const session = await requireCompany("leaveRequests", "create");
   if ("error" in session) {
     return session;
   }
@@ -1645,7 +1644,7 @@ export async function createLeaveRequest(input: LeaveRequestInput) {
 }
 
 export async function updateLeaveRequest(id: number, input: LeaveRequestInput) {
-  const session = await requireCompany();
+  const session = await requireCompany("leaveRequests", "edit");
   if ("error" in session) {
     return session;
   }
@@ -1714,7 +1713,7 @@ export async function updateLeaveRequest(id: number, input: LeaveRequestInput) {
 }
 
 export async function deleteLeaveRequest(id: number) {
-  const session = await requireCompany();
+  const session = await requireCompany("leaveRequests", "delete");
   if ("error" in session) {
     return session;
   }
@@ -1748,7 +1747,7 @@ export async function deleteLeaveRequest(id: number) {
 }
 
 export async function decideLeaveRequest(id: number, decision: "Approved" | "Rejected") {
-  const session = await requireCompany();
+  const session = await requireCompany("leaveRequests", "edit");
   if ("error" in session) {
     return session;
   }

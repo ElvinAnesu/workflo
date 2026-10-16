@@ -1,6 +1,8 @@
 import "server-only";
+import type { AccessAction } from "@/lib/access";
+import { requireFeature } from "./access";
 import { getPool, sql } from "./db";
-import { getSession, type SessionDTO } from "./session";
+import type { SessionDTO } from "./session";
 
 type CompanySession = SessionDTO & { company: NonNullable<SessionDTO["company"]> };
 
@@ -40,15 +42,8 @@ function isForeignKeyError(error: unknown) {
   return errorNumber(error) === 547;
 }
 
-async function requireCompany(): Promise<CompanySession | { error: string }> {
-  const session = await getSession();
-  if (!session) {
-    return { error: "No signed-in user." };
-  }
-  if (!session.company) {
-    return { error: "No current company." };
-  }
-  return session as CompanySession;
+function requireCompany(action: AccessAction) {
+  return requireFeature("employmentType", action);
 }
 
 function mapRow(row: { id: number; name: string }): EmploymentTypeRow {
@@ -71,7 +66,7 @@ const NAME_SEARCH = `
 `;
 
 export async function listEmploymentTypes(query: EmploymentTypeListQuery) {
-  const session = await requireCompany();
+  const session = await requireCompany("view");
   if ("error" in session) {
     return { rows: [], totalCount: 0 };
   }
@@ -117,7 +112,7 @@ export async function listEmploymentTypes(query: EmploymentTypeListQuery) {
 export async function listEmploymentTypesForExport(
   query: Omit<EmploymentTypeListQuery, "page" | "pageSize">,
 ) {
-  const session = await requireCompany();
+  const session = await requireCompany("view");
   if ("error" in session) {
     return [];
   }
@@ -143,7 +138,7 @@ export async function listEmploymentTypesForExport(
 }
 
 export async function createEmploymentType(input: EmploymentTypeInput) {
-  const session = await requireCompany();
+  const session = await requireCompany("create");
   if ("error" in session) {
     return session;
   }
@@ -176,7 +171,7 @@ export async function createEmploymentType(input: EmploymentTypeInput) {
 }
 
 export async function updateEmploymentType(id: number, input: EmploymentTypeInput) {
-  const session = await requireCompany();
+  const session = await requireCompany("edit");
   if ("error" in session) {
     return session;
   }
@@ -217,7 +212,7 @@ export async function updateEmploymentType(id: number, input: EmploymentTypeInpu
 }
 
 export async function deleteEmploymentType(id: number) {
-  const session = await requireCompany();
+  const session = await requireCompany("delete");
   if ("error" in session) {
     return session;
   }

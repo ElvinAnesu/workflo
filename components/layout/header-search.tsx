@@ -4,12 +4,17 @@ import { Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useId, useState, type KeyboardEvent } from "react";
 import { formControlSearchClass } from "@/components/form/form-control";
+import { useSession } from "@/components/session/session-context";
+import { can, featureForPath } from "@/lib/access";
 import { flatNavLinks } from "./nav-config";
-
-const LINKS = flatNavLinks();
 
 export function HeaderSearch() {
   const router = useRouter();
+  const access = useSession()?.access;
+  const links = flatNavLinks().filter((link) => {
+    const feature = featureForPath(link.href);
+    return Boolean(feature && can(access, feature, "view"));
+  });
   const listId = useId();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -17,7 +22,7 @@ export function HeaderSearch() {
 
   const term = query.trim().toLowerCase();
   const results = term
-    ? LINKS.filter((link) =>
+    ? links.filter((link) =>
         `${link.label} ${link.trail}`.toLowerCase().includes(term),
       ).slice(0, 8)
     : [];

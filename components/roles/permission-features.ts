@@ -90,6 +90,7 @@ export const PERMISSION_FEATURES: PermissionFeature[] = [
   { key: "payComponents", label: "Pay components", group: "System Config", hasRun: false },
   { key: "statutoryRates", label: "Statutory rates", group: "System Config", hasRun: false },
   { key: "taxBands", label: "Tax bands", group: "System Config", hasRun: false },
+  { key: "overtimeRates", label: "Overtime rates", group: "System Config", hasRun: false },
   { key: "banks", label: "Banks", group: "System Config", hasRun: false },
   { key: "kpis", label: "KPIs", group: "System Config", hasRun: false },
   { key: "appraisalCycles", label: "Appraisal cycles", group: "System Config", hasRun: false },

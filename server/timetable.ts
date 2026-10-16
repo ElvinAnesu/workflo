@@ -1,4 +1,6 @@
 import "server-only";
+import type { AccessAction } from "@/lib/access";
+import { requireFeature } from "./access";
 import {
   WEEKDAYS,
   type TimetableDepartmentOption,
@@ -11,7 +13,7 @@ import {
   type TimetableShiftOption,
 } from "@/components/timetable/timetable.types";
 import { getPool, sql } from "./db";
-import { getSession, type SessionDTO } from "./session";
+import type { SessionDTO } from "./session";
 
 type CompanySession = SessionDTO & { company: NonNullable<SessionDTO["company"]> };
 
@@ -157,15 +159,8 @@ type ParsedTimetable = {
 
 const WEEKDAY_ORDER = new Map<string, number>(WEEKDAYS.map((day, index) => [day, index]));
 
-async function requireCompany(): Promise<CompanySession | { error: string }> {
-  const session = await getSession();
-  if (!session) {
-    return { error: "No signed-in user." };
-  }
-  if (!session.company) {
-    return { error: "No current company." };
-  }
-  return session as CompanySession;
+function requireCompany(action: AccessAction) {
+  return requireFeature("timetable", action);
 }
 
 function formatTime(value: Date | string) {
@@ -382,7 +377,7 @@ export async function listTimetableFormOptions() {
     shifts: [] as TimetableShiftOption[],
     departments: [] as TimetableDepartmentOption[],
   };
-  const session = await requireCompany();
+  const session = await requireCompany("view");
   if ("error" in session) {
     return empty;
   }
@@ -421,7 +416,7 @@ const NO_DEPARTMENT = "No department";
 export async function listTimetableEmployees(
   query: TimetableEmployeeFilter,
 ): Promise<TimetableEmployeeChoice[]> {
-  const session = await requireCompany();
+  const session = await requireCompany("view");
   if ("error" in session) {
     return [];
   }
@@ -502,7 +497,7 @@ export async function listTimetableEmployees(
 }
 
 export async function listTimetable(query: TimetableListQuery) {
-  const session = await requireCompany();
+  const session = await requireCompany("view");
   if ("error" in session) {
     return { rows: [], totalCount: 0 };
   }
@@ -536,7 +531,7 @@ export async function listTimetable(query: TimetableListQuery) {
 export async function listTimetableForExport(
   query: Omit<TimetableListQuery, "page" | "pageSize">,
 ) {
-  const session = await requireCompany();
+  const session = await requireCompany("view");
   if ("error" in session) {
     return [];
   }
@@ -687,7 +682,7 @@ async function saveTimetable(
 }
 
 export async function createTimetable(input: TimetableInput) {
-  const session = await requireCompany();
+  const session = await requireCompany("create");
   if ("error" in session) {
     return session;
   }
@@ -699,7 +694,7 @@ export async function createTimetable(input: TimetableInput) {
 }
 
 export async function updateTimetable(id: number, input: TimetableInput) {
-  const session = await requireCompany();
+  const session = await requireCompany("edit");
   if ("error" in session) {
     return session;
   }
@@ -711,7 +706,7 @@ export async function updateTimetable(id: number, input: TimetableInput) {
 }
 
 export async function deleteTimetable(id: number) {
-  const session = await requireCompany();
+  const session = await requireCompany("delete");
   if ("error" in session) {
     return session;
   }

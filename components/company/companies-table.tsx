@@ -15,7 +15,7 @@ import type {
   DataTableColumn,
   DataTableSort,
 } from "@/components/table/data-table.types";
-import { exportTable, RowActions, TableActions } from "@/components/table/table-actions";
+import { exportTable, RowActions, TableActions, usePageCan } from "@/components/table/table-actions";
 
 type CompaniesTableProps = {
   rows: CompanyListRow[];
@@ -59,6 +59,7 @@ export function CompaniesTable({
   sort,
 }: CompaniesTableProps) {
   const overlay = useOverlayDialog();
+  const canEdit = usePageCan("edit");
   const { confirm } = useConfirmDialog();
   const router = useRouter();
   const pathname = usePathname();
@@ -113,7 +114,7 @@ export function CompaniesTable({
         label: "Actions",
         sortable: false,
         exportValue: false,
-        render: (row) => (
+        render: (row) => canEdit ? (
           <RowActions>
             <button
               type="button"
@@ -140,10 +141,10 @@ export function CompaniesTable({
               {row.isActive ? "Deactivate" : "Activate"}
             </button>
           </RowActions>
-        ),
+        ) : null,
       },
     ],
-    [overlay, toggleActive],
+    [canEdit, overlay, toggleActive],
   );
 
   async function handleExport() {
